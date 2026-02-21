@@ -38,7 +38,8 @@ jobs:
           md5sum *.apk
 
       # 上传产物
-      - name: Upload Artifact
-        uses: ./.github/actions/upload-artifact
-        env:
-          PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
+      - name: Upload All APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: lx-music-apks-collection
+          path: android/app/build/outputs/apk/release/**/*.apk
