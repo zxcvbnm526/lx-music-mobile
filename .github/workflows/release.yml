@@ -23,6 +23,69 @@ jobs:
         shell: bash
         run: |
           cd android
+          
+          echo "=== 开始实施动态上下文重定向（安全幂等版本） ==="
+          set -e
+
+          TARGET_DIR="../node_modules/react-native-track-player/android/src/main"
+
+          if [ ! -d "$TARGET_DIR" ]; then
+            echo "警告：未找到路径 $TARGET_DIR，请核对依赖安装状态。"
+            exit 1
+          fi
+
+          echo "扫描目标目录: $TARGET_DIR"
+
+          # 只扫描 Java 和 Kotlin 源文件
+          grep -rlE --include="*.java" --include="*.kt" \
+            "(^|[^A-Za-z0-9_])getCacheDir\(\)|(^|[^A-Za-z0-9_])getFilesDir\(\)|\.cacheDir|\.filesDir" \
+            "$TARGET_DIR" | while IFS= read -r FILE; do
+
+            echo "处理文件: $FILE"
+
+            # -------------------------
+            # 1️⃣ Java 方法调用替换（仅替换未被 applicationContext 包裹的调用）
+            # -------------------------
+
+            # context.getCacheDir() → context.getApplicationContext().getCacheDir()
+            sed -i -E '
+              s/([A-Za-z0-9_]+)\.getCacheDir\(\)/\1.getApplicationContext().getCacheDir()/g
+            ' "$FILE"
+
+            sed -i -E '
+              s/([A-Za-z0-9_]+)\.getFilesDir\(\)/\1.getApplicationContext().getFilesDir()/g
+            ' "$FILE"
+
+            # -------------------------
+            # 2️⃣ Kotlin 属性调用替换（仅当未包含 applicationContext 时）
+            # -------------------------
+
+            # context.cacheDir → context.applicationContext.cacheDir
+            sed -i -E '
+              s/([A-Za-z0-9_]+)\.cacheDir/\1.applicationContext.cacheDir/g
+            ' "$FILE"
+
+            sed -i -E '
+              s/([A-Za-z0-9_]+)\.filesDir/\1.applicationContext.filesDir/g
+            ' "$FILE"
+
+            # -------------------------
+            # 3️⃣ 幂等折叠（多层清理，直到收敛）
+            # -------------------------
+
+            # 连续折叠直到无变化
+            while grep -q "getApplicationContext()\.getApplicationContext()" "$FILE"; do
+              sed -i 's/getApplicationContext()\.getApplicationContext()/getApplicationContext()/g' "$FILE"
+            done
+
+            while grep -q "\.applicationContext\.applicationContext" "$FILE"; do
+              sed -i 's/\.applicationContext\.applicationContext/.applicationContext/g' "$FILE"
+            done
+
+          done
+
+          echo "动态上下文重定向注入完成（安全版本）。"
+
           ./gradlew assembleRelease -PMYAPP_UPLOAD_STORE_FILE='debug.keystore' -PMYAPP_UPLOAD_KEY_ALIAS='androiddebugkey' -PMYAPP_UPLOAD_STORE_PASSWORD='android' -PMYAPP_UPLOAD_KEY_PASSWORD='android'
 
       # 保留版本号读取，仅用于后续步骤的产物命名匹配，不涉及代码库修改
