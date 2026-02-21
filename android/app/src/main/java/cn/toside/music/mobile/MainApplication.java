@@ -90,6 +90,19 @@ public class MainApplication extends NavigationApplication {
       }
 
       @Override
+      public File getExternalFilesDir(String type) {
+        if (finalSsdDir != null) {
+          File customExtFiles = new File(finalSsdDir, "ext_files");
+          if (type != null)
+            customExtFiles = new File(customExtFiles, type);
+          if (customExtFiles.exists() || customExtFiles.mkdirs()) {
+            return customExtFiles;
+          }
+        }
+        return super.getExternalFilesDir(type);
+      }
+
+      @Override
       public File getNoBackupFilesDir() {
         if (finalSsdDir != null) {
           File customNoBackup = new File(finalSsdDir, "no_backup");
