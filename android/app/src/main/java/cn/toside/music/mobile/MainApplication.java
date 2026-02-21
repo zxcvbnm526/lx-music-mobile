@@ -67,6 +67,16 @@ public class MainApplication extends NavigationApplication {
       }
 
       @Override
+      public File getFilesDir() {
+        if (finalSsdDir != null) {
+          File customFiles = new File(finalSsdDir, "files");
+          if (!customFiles.exists()) customFiles.mkdirs();
+          return customFiles;
+        }
+        return super.getFilesDir();
+      }
+
+      @Override
       public File getExternalCacheDir() {
         if (finalSsdDir != null) {
           File customExtCache = new File(finalSsdDir, "ext_cache");
