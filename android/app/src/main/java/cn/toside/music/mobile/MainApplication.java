@@ -39,7 +39,6 @@ public class MainApplication extends NavigationApplication {
           try {
             // 判定条件2：读取文件系统的底层容量块数据
             StatFs statFs = new StatFs(dir.getAbsolutePath());
-            // Android 4.3 (API 18) 引入了 getTotalBytes()
             long totalBytes = statFs.getTotalBytes();
             
             if (totalBytes > THRESHOLD_BYTES) {
@@ -47,7 +46,7 @@ public class MainApplication extends NavigationApplication {
               break; // 准确命中 512GB 固态硬盘，终止遍历
             }
           } catch (IllegalArgumentException e) {
-            // 忽略未挂载成功或无访问权限的异常路径，继续遍历下一个设备
+            // 忽略未挂载成功或无访问权限的异常路径
           }
         }
       }
@@ -60,18 +59,21 @@ public class MainApplication extends NavigationApplication {
       public File getCacheDir() {
         if (finalSsdDir != null) {
           File customCache = new File(finalSsdDir, "cache");
-          if (!customCache.exists()) customCache.mkdirs();
-          return customCache;
+          // 极致防御：仅当目录真实存在或成功创建时，才返回重定向路径
+          if (customCache.exists() || customCache.mkdirs()) {
+            return customCache;
+          }
         }
-        return super.getCacheDir(); // 未找到固态硬盘时回退至系统默认
+        return super.getCacheDir(); // 硬盘异常时回退
       }
 
       @Override
       public File getFilesDir() {
         if (finalSsdDir != null) {
           File customFiles = new File(finalSsdDir, "files");
-          if (!customFiles.exists()) customFiles.mkdirs();
-          return customFiles;
+          if (customFiles.exists() || customFiles.mkdirs()) {
+            return customFiles;
+          }
         }
         return super.getFilesDir();
       }
@@ -80,10 +82,50 @@ public class MainApplication extends NavigationApplication {
       public File getExternalCacheDir() {
         if (finalSsdDir != null) {
           File customExtCache = new File(finalSsdDir, "ext_cache");
-          if (!customExtCache.exists()) customExtCache.mkdirs();
-          return customExtCache;
+          if (customExtCache.exists() || customExtCache.mkdirs()) {
+            return customExtCache;
+          }
         }
         return super.getExternalCacheDir();
+      }
+
+      @Override
+      public File getNoBackupFilesDir() {
+        if (finalSsdDir != null) {
+          File customNoBackup = new File(finalSsdDir, "no_backup");
+          if (customNoBackup.exists() || customNoBackup.mkdirs()) {
+            return customNoBackup;
+          }
+        }
+        return super.getNoBackupFilesDir();
+      }
+
+      @Override
+      public File getDir(String name, int mode) {
+        if (name != null) {
+          String n = name.toLowerCase();
+          // 【严格白名单】必须留在原生内部存储 (ext4/f2fs)，严禁重定向至 NTFS
+          if (n.contains("webview") || 
+              n.contains("textures") || 
+              n.contains("dex") ||      // Dalvik/ART 缓存
+              n.contains("lib") ||      // .so 动态链接库
+              n.contains("ssl") ||      // 底层网络安全证书
+              n.contains("chrome") ||   // 内核渲染目录
+              n.contains("metrics") ||  // 性能监控底层日志
+              n.contains("geolocation")) { // 定位缓存
+            return super.getDir(name, mode);
+          }
+
+          // 拦截其余未命中白名单的目录，重定向至 SSD
+          if (finalSsdDir != null) {
+            File customDir = new File(finalSsdDir, "app_" + name);
+            if (customDir.exists() || customDir.mkdirs()) {
+              return customDir;
+            }
+          }
+        }
+        // 如果 name 为 null，或者固态硬盘写入失败，均在此托底
+        return super.getDir(name, mode);
       }
     };
 
